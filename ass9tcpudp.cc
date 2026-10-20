@@ -124,11 +124,7 @@ int main(int argc, char *argv[])
 
 
 
-
-
-
-
-  #include "ns3/core-module.h"
+#include "ns3/core-module.h"
 #include "ns3/network-module.h"
 #include "ns3/internet-module.h"
 #include "ns3/point-to-point-module.h"
@@ -191,27 +187,47 @@ int main() {
     Simulator::Run();
 
     Ptr<Ipv4FlowClassifier> cl =
-        DynamicCast<Ipv4FlowClassifier>(fm.GetClassifier());
+    DynamicCast<Ipv4FlowClassifier>(fm.GetClassifier());
 
-    for (auto f : monitor->GetFlowStats()) {
-        auto t = cl->FindFlow(f.first);
-        if (t.destinationPort != 5000 && t.destinationPort != 6000)
-            continue;
+    auto stats = monitor->GetFlowStats();
 
-        auto s = f.second;
-        double loss = s.txPackets ? 100.0 * (s.txPackets-s.rxPackets)/s.txPackets : 0;
-        double delay = s.rxPackets ? 1000.0 * s.delaySum.GetSeconds()/s.rxPackets : 0;
-        double duration = s.timeLastRxPacket.GetSeconds()-s.timeFirstTxPacket.GetSeconds();
-        double rate = duration > 0 ? s.rxBytes*8.0/duration/1e6 : 0;
+for (const auto &kv : stats) {
+    Ipv4FlowClassifier::FiveTuple t = cl->FindFlow(kv.first);
+    const auto &s = kv.second;
 
-        std::cout << (t.destinationPort == 5000 ? "TCP" : "UDP")
-                  << " Loss=" << loss << "% Delay=" << delay
-                  << "ms Throughput=" << rate << "Mbps\n";
-    }
+    // Keep only our TCP and UDP application flows
+    if (t.destinationPort != 5000 && t.destinationPort != 6000)
+        continue;
 
-    Simulator::Destroy();
+    double dur = (s.timeLastRxPacket -
+                  s.timeFirstTxPacket).GetSeconds();
+
+    double mbps = dur > 0
+        ? s.rxBytes * 8.0 / dur / 1e6
+        : 0;
+
+    double delay = s.rxPackets > 0
+        ? s.delaySum.GetSeconds() / s.rxPackets * 1000.0
+        : 0;
+
+    double loss = s.txPackets > 0
+        ? 100.0 * (s.txPackets - s.rxPackets) / s.txPackets
+        : 0;
+
+    double pdr = s.txPackets > 0
+        ? 100.0 * s.rxPackets / s.txPackets
+        : 0;
+
+    std::cout << (t.destinationPort == 5000 ? "TCP" : "UDP")
+              << " Flow " << kv.first
+              << " (" << t.sourceAddress << " -> "
+              << t.destinationAddress
+              << ", Port " << t.destinationPort << ")\n"
+              << " Throughput: " << mbps << " Mbps\n"
+              << " Avg Delay: " << delay << " ms\n"
+              << " Loss: " << loss << "%\n"
+              << " PDR: " << pdr << "%\n";
 }
 
-  Simulator::Destroy();
-  return 0;
+Simulator::Destroy();
 }
