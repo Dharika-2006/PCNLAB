@@ -68,3 +68,40 @@ int main()
         pthread_detach(t);
     }
 }
+
+
+
+
+
+
+
+
+
+
+#include <stdio.h>
+#include <string.h>
+#include <unistd.h>
+#include <arpa/inet.h>
+
+int main() {
+    int s = socket(AF_INET, SOCK_STREAM, 0);
+    struct sockaddr_in a = {0}, c;
+    socklen_t len = sizeof(c);
+    char msg[100];
+
+    a.sin_family = AF_INET;
+    a.sin_port = htons(8080);
+    a.sin_addr.s_addr = INADDR_ANY;
+    bind(s, (struct sockaddr *)&a, sizeof(a));
+    listen(s, 1);
+
+    int client = accept(s, (struct sockaddr *)&c, &len);
+    int n = recv(client, msg, sizeof(msg)-1, 0);
+    msg[n] = '\0';
+
+    printf("Received: %s\n", msg);
+    send(client, msg, n, 0);
+
+    close(client);
+    close(s);
+}
