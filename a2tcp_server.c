@@ -4,13 +4,17 @@
 #include <unistd.h>
 #include <pthread.h>
 #include <arpa/inet.h>
+#include <sys/time.h>
 #define PORT 8080
+#define DROP 1 /* 1 = drop first reply to demo retransmission, 0 = normal */
 
 void *handle(void *arg)
 {
     int c = *(int *)arg;
     free(arg);
-    char roll[64] = {0}, line[256], out[256] = "Student Record Not Found";
+    struct timeval tv = {3, 0}; /* server timer: 3 s */
+    setsockopt(c, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof tv);
+    char roll[64] = {0}, line[256], out[256] = "Student Record Not Found", ack[16];
     int n = read(c, roll, sizeof roll - 1);
     if (n > 0)
     {
@@ -29,7 +33,20 @@ void *handle(void *arg)
         }
         if (f)
             fclose(f);
-        write(c, out, strlen(out));
+        for (int t = 0; t < 3; t++)
+        { /* send reply, wait for ACK, retransmit */
+            if (DROP && t == 0)
+                puts("Reply dropped (simulated)");
+            else
+                write(c, out, strlen(out));
+            n = read(c, ack, sizeof ack - 1);
+            if (n > 0 && ack[0] == 'A')
+            {
+                puts("ACK received");
+                break;
+            }
+            puts("No ACK, retransmitting reply");
+        }
     }
     close(c);
     return NULL;
