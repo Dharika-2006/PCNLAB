@@ -70,3 +70,71 @@ int main(void)
     close(sockfd);
     return 0;
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#include <stdio.h>
+#include <string.h>
+#include <unistd.h>
+#include <arpa/inet.h>
+#include <sys/time.h>
+
+int main() {
+    int s = socket(AF_INET, SOCK_DGRAM, 0);
+    struct sockaddr_in server = {0};
+    char msg[100], reply[100];
+    socklen_t len = sizeof(server);
+
+    server.sin_family = AF_INET;
+    server.sin_port = htons(8080);
+    inet_pton(AF_INET, "127.0.0.1", &server.sin_addr);
+
+    struct timeval timer = {2, 0};
+    setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, &timer, sizeof(timer));
+
+    printf("Enter message: ");
+    fgets(msg, sizeof(msg), stdin);
+    msg[strcspn(msg, "\n")] = '\0';
+
+    for (int i = 1; i <= 3; i++) {
+        sendto(s, msg, strlen(msg), 0,
+               (struct sockaddr *)&server, len);
+        printf("Sent (attempt %d)\n", i);
+
+        int n = recvfrom(s, reply, sizeof(reply)-1, 0,
+                         (struct sockaddr *)&server, &len);
+
+        if (n >= 0) {
+            reply[n] = '\0';
+            printf("Echo from server: %s\n", reply);
+            close(s);
+            return 0;
+        }
+
+        printf("Timeout! Retrying...\n");
+    }
+
+    printf("No reply after 3 attempts.\n");
+    close(s);
+    return 0;
+}
