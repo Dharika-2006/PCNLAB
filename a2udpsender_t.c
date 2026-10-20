@@ -88,3 +88,50 @@ int main(void)
     close(sockfd);
     return 1;
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#include <stdio.h>
+#include <string.h>
+#include <unistd.h>
+#include <arpa/inet.h>
+
+int main() {
+    int s = socket(AF_INET, SOCK_DGRAM, 0);
+    struct sockaddr_in server = {0}, client;
+    socklen_t len = sizeof(client);
+    char msg[100];
+
+    server.sin_family = AF_INET;
+    server.sin_port = htons(8080);
+    server.sin_addr.s_addr = INADDR_ANY;
+    bind(s, (struct sockaddr *)&server, sizeof(server));
+
+    while (1) {
+        int n = recvfrom(s, msg, sizeof(msg)-1, 0,
+                         (struct sockaddr *)&client, &len);
+        msg[n] = '\0';
+        printf("Received: %s\n", msg);
+
+        sendto(s, msg, n, 0, (struct sockaddr *)&client, len);
+    }
+}
