@@ -105,6 +105,113 @@ int main(int argc, char *argv[])
     std::cout << std::endl;
   }
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  #include "ns3/core-module.h"
+#include "ns3/network-module.h"
+#include "ns3/internet-module.h"
+#include "ns3/point-to-point-module.h"
+#include "ns3/applications-module.h"
+#include "ns3/flow-monitor-module.h"
+#include <iostream>
+using namespace ns3;
+
+int main() {
+    NodeContainer n;
+    n.Create(6); // 0,1 = senders; 2,3 = receivers; 4,5 = routers
+
+    PointToPointHelper access, bottleneck;
+    access.SetDeviceAttribute("DataRate", StringValue("10Mbps"));
+    access.SetChannelAttribute("Delay", StringValue("2ms"));
+    bottleneck.SetDeviceAttribute("DataRate", StringValue("2Mbps"));
+    bottleneck.SetChannelAttribute("Delay", StringValue("10ms"));
+
+    NetDeviceContainer d0 = access.Install(n.Get(0), n.Get(4));
+    NetDeviceContainer d1 = access.Install(n.Get(1), n.Get(4));
+    NetDeviceContainer db = bottleneck.Install(n.Get(4), n.Get(5));
+    NetDeviceContainer d2 = access.Install(n.Get(5), n.Get(2));
+    NetDeviceContainer d3 = access.Install(n.Get(5), n.Get(3));
+
+    InternetStackHelper internet;
+    internet.Install(n);
+
+    Ipv4AddressHelper ip;
+    ip.SetBase("10.1.1.0", "255.255.255.0"); ip.Assign(d0);
+    ip.SetBase("10.1.2.0", "255.255.255.0"); ip.Assign(d1);
+    ip.SetBase("10.1.3.0", "255.255.255.0"); ip.Assign(db);
+    ip.SetBase("10.1.4.0", "255.255.255.0"); ip.Assign(d2);
+    ip.SetBase("10.1.5.0", "255.255.255.0");
+    Ipv4InterfaceContainer i3 = ip.Assign(d3);
+
+    Ipv4GlobalRoutingHelper::PopulateRoutingTables();
+
+    PacketSinkHelper tcpSink("ns3::TcpSocketFactory",
+        InetSocketAddress(Ipv4Address::GetAny(), 5000));
+    PacketSinkHelper udpSink("ns3::UdpSocketFactory",
+        InetSocketAddress(Ipv4Address::GetAny(), 6000));
+    tcpSink.Install(n.Get(3)).Start(Seconds(0));
+    udpSink.Install(n.Get(2)).Start(Seconds(0));
+
+    BulkSendHelper tcp("ns3::TcpSocketFactory",
+        InetSocketAddress(i3.GetAddress(1), 5000));
+    tcp.SetAttribute("SendSize", UintegerValue(1024));
+    tcp.Install(n.Get(0)).Start(Seconds(1));
+
+    OnOffHelper udp("ns3::UdpSocketFactory",
+        InetSocketAddress(Ipv4Address("10.1.4.2"), 6000));
+    udp.SetAttribute("DataRate", StringValue("1Mbps"));
+    udp.SetAttribute("PacketSize", UintegerValue(512));
+    udp.Install(n.Get(1)).Start(Seconds(1));
+
+    FlowMonitorHelper fm;
+    Ptr<FlowMonitor> monitor = fm.InstallAll();
+
+    Simulator::Stop(Seconds(10));
+    Simulator::Run();
+
+    Ptr<Ipv4FlowClassifier> cl =
+        DynamicCast<Ipv4FlowClassifier>(fm.GetClassifier());
+
+    for (auto f : monitor->GetFlowStats()) {
+        auto t = cl->FindFlow(f.first);
+        if (t.destinationPort != 5000 && t.destinationPort != 6000)
+            continue;
+
+        auto s = f.second;
+        double loss = s.txPackets ? 100.0 * (s.txPackets-s.rxPackets)/s.txPackets : 0;
+        double delay = s.rxPackets ? 1000.0 * s.delaySum.GetSeconds()/s.rxPackets : 0;
+        double duration = s.timeLastRxPacket.GetSeconds()-s.timeFirstTxPacket.GetSeconds();
+        double rate = duration > 0 ? s.rxBytes*8.0/duration/1e6 : 0;
+
+        std::cout << (t.destinationPort == 5000 ? "TCP" : "UDP")
+                  << " Loss=" << loss << "% Delay=" << delay
+                  << "ms Throughput=" << rate << "Mbps\n";
+    }
+
+    Simulator::Destroy();
+}
+
   Simulator::Destroy();
   return 0;
 }
