@@ -3,68 +3,61 @@
 #include "ns3/internet-module.h"
 #include "ns3/point-to-point-module.h"
 #include "ns3/applications-module.h"
+
 using namespace ns3;
 
 int main(int argc, char *argv[])
 {
-  std::string latency = "2ms";
-  double rate = 1.0;        // Rate1 in Mbps
-  uint32_t flows = 1;       // 1 = first app only, 2 = both apps
-  uint32_t pktSize = 1000;
+    // 1. Create two nodes
+    NodeContainer nodes;
+    nodes.Create(2);
 
-  CommandLine cmd;
-  cmd.AddValue("latency", "P2P link latency", latency);
-  cmd.AddValue("rate", "UDP rate in Mbps", rate);
-  cmd.AddValue("flows", "Number of UDP applications (1 or 2)", flows);
-  cmd.Parse(argc, argv);
+    // 2. Connect nodes using point-to-point link
+    PointToPointHelper p2p;
+    p2p.SetDeviceAttribute("DataRate", StringValue("10Mbps"));
+    p2p.SetChannelAttribute("Delay", StringValue("2ms"));
 
-  NodeContainer nodes;
-  nodes.Create(2);
+    NetDeviceContainer devices = p2p.Install(nodes);
 
-  PointToPointHelper p2p;
-  p2p.SetDeviceAttribute("DataRate", StringValue("10Mbps"));
-  p2p.SetChannelAttribute("Delay", StringValue(latency));
-  NetDeviceContainer devices = p2p.Install(nodes);
+    // 3. Install Internet stack
+    InternetStackHelper internet;
+    internet.Install(nodes);
 
-  InternetStackHelper internet;
-  internet.Install(nodes);
+    // 4. Assign IP addresses
+    Ipv4AddressHelper address;
+    address.SetBase("10.1.1.0", "255.255.255.0");
 
-  Ipv4AddressHelper address;
-  address.SetBase("10.1.1.0", "255.255.255.0");
-  Ipv4InterfaceContainer interfaces = address.Assign(devices);
+    Ipv4InterfaceContainer interfaces;
+    interfaces = address.Assign(devices);
 
-  ApplicationContainer servers;
-  for (uint32_t i = 0; i < flows; i++)
-  {
-    uint16_t port = 5000 + 1000 * i;          // 5000, 6000
+    // 5. Install UDP Echo server on Node 1
+    UdpEchoServerHelper server(9);
 
-    UdpServerHelper server(port);
-    ApplicationContainer s = server.Install(nodes.Get(1));
-    s.Start(Seconds(0.0));
-    s.Stop(Seconds(10.0));
-    servers.Add(s);
+    ApplicationContainer serverApp;
+    serverApp = server.Install(nodes.Get(1));
 
-    UdpClientHelper client(interfaces.GetAddress(1), port);
-    client.SetAttribute("MaxPackets", UintegerValue(1000000));
-    client.SetAttribute("Interval", TimeValue(Seconds(pktSize * 8 / (rate * 1e6))));
-    client.SetAttribute("PacketSize", UintegerValue(pktSize));
-    ApplicationContainer c = client.Install(nodes.Get(0));
-    c.Start(Seconds(1.0));
-    c.Stop(Seconds(9.0));
-  }
+    serverApp.Start(Seconds(1.0));
+    serverApp.Stop(Seconds(10.0));
 
-  p2p.EnablePcapAll("udp-ports");
+    // 6. Install UDP Echo client on Node 0
+    UdpEchoClientHelper client(interfaces.GetAddress(1), 9);
 
-  Simulator::Stop(Seconds(10.0));
-  Simulator::Run();
+    client.SetAttribute("MaxPackets", UintegerValue(10));
+    client.SetAttribute("Interval", TimeValue(Seconds(1.0)));
+    client.SetAttribute("PacketSize", UintegerValue(1024));
 
-  for (uint32_t i = 0; i < flows; i++)
-  {
-    uint32_t rx = DynamicCast<UdpServer>(servers.Get(i))->GetReceived();
-    std::cout << "Latency " << latency << "  Flow " << i + 1 << " (port " << 5000 + 1000 * i
-              << ") throughput: " << rx * pktSize * 8 / 8.0 / 1e6 << " Mbps" << std::endl;  // client active 8 s
-  }
+    ApplicationContainer clientApp;
+    clientApp = client.Install(nodes.Get(0));
 
-  Simulator::Destroy();
-  return 0;
+    clientApp.Start(Seconds(2.0));
+    clientApp.Stop(Seconds(10.0));
+
+    // 7. Enable PCAP tracing
+    p2p.EnablePcapAll("udp-echo");
+
+    // 8. Run simulation
+    Simulator::Run();
+    Simulator::Destroy();
+
+    return 0;
 }
