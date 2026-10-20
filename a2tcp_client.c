@@ -36,3 +36,34 @@ int main()
         puts("No response from server");
     close(s);
 }
+
+
+
+
+
+
+#include <stdio.h>
+#include <string.h>
+#include <unistd.h>
+#include <arpa/inet.h>
+
+int main() {
+    int s = socket(AF_INET, SOCK_STREAM, 0);
+    struct sockaddr_in a = {0};
+    char msg[100], reply[100];
+
+    a.sin_family = AF_INET;
+    a.sin_port = htons(8080);
+    inet_pton(AF_INET, "127.0.0.1", &a.sin_addr);
+    connect(s, (struct sockaddr *)&a, sizeof(a));
+
+    printf("Enter message: ");
+    fgets(msg, sizeof(msg), stdin);
+    send(s, msg, strlen(msg), 0);
+
+    int n = recv(s, reply, sizeof(reply)-1, 0);
+    reply[n] = '\0';
+    printf("Echo from server: %s", reply);
+
+    close(s);
+}
